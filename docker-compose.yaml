@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hope-i-win-db
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=secretpass
+      - POSTGRES_DB=postgres
+    ports:
+      - "5430:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hope-i-win-api
+    ports:
+      - "7000:7000"
+    environment:
+      - NODE_ENV=production
+      - PORT=7000
+      - LOG_LEVEL=info
+      # Database connection settings (override the ones in db-connection.ts)
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=secretpass
+      - DB_NAME=postgres
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://localhost:7000/api-docs', (r) => {r.statusCode === 200 ? process.exit(0) : process.exit(1)})",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  postgres_data:
+    name: hope-i-win-postgres-data
