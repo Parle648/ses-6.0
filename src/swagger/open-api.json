@@ -70,9 +70,6 @@
           "200": {
             "description": "Subscription confirmed successfully"
           },
-          "400": {
-            "description": "Invalid token"
-          },
           "404": {
             "description": "Token not found"
           }
@@ -98,9 +95,6 @@
         "responses": {
           "200": {
             "description": "Unsubscribed successfully"
-          },
-          "400": {
-            "description": "Invalid token"
           },
           "404": {
             "description": "Token not found"

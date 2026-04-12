@@ -5,6 +5,8 @@ import pool from "../config/db-connection";
 const logger = log4js.getLogger();
 logger.level = process.env.LOG_LEVEL || "info";
 
+const RATE_LIMIT_BLOCK_MS = 60 * 60 * 1000; // 1 hour
+
 interface Repository {
   id: number;
   owner: string;
@@ -24,8 +26,21 @@ interface GitHubRelease {
   html_url: string;
 }
 
+export class RateLimitError extends Error {
+  readonly retryAfter: Date;
+
+  constructor(retryAfter: Date) {
+    super(
+      `GitHub API rate limit exceeded. Retry after ${retryAfter.toISOString()}`,
+    );
+    this.name = "RateLimitError";
+    this.retryAfter = retryAfter;
+  }
+}
+
 export class ReleaseTrackerService {
   private octokit: Octokit;
+  private rateLimitedUntil: Date | null = null;
 
   constructor() {
     this.octokit = new Octokit({
@@ -33,6 +48,70 @@ export class ReleaseTrackerService {
       userAgent: "GitHub Release Tracker v1.0.0",
     });
   }
+
+  // ── Rate-limit guard ───────────────────────────────────────────────────────
+
+  isRateLimited(): boolean {
+    if (!this.rateLimitedUntil) return false;
+    if (new Date() >= this.rateLimitedUntil) {
+      this.rateLimitedUntil = null; // block has expired
+      logger.info("✅ GitHub rate-limit block expired, resuming requests.");
+      return false;
+    }
+    return true;
+  }
+
+  private handleRateLimitError(error: unknown): never {
+    // GitHub returns 403 for rate-limit hits (primary) and 429 (secondary).
+    // The x-ratelimit-reset header holds the Unix timestamp to resume.
+    const retryAfter = this.extractRetryAfter(error);
+
+    this.rateLimitedUntil = retryAfter;
+    logger.error(
+      `🚫 GitHub rate limit hit (status ${(error as { status?: number }).status}). ` +
+        `All requests blocked until ${retryAfter.toLocaleString()}.`,
+    );
+
+    throw new RateLimitError(retryAfter);
+  }
+
+  private extractRetryAfter(error: unknown): Date {
+    if (error && typeof error === "object") {
+      const err = error as {
+        status?: number;
+        response?: {
+          headers?: { "x-ratelimit-reset"?: string; "retry-after"?: string };
+        };
+      };
+
+      // Prefer the x-ratelimit-reset Unix timestamp from the response headers
+      const resetHeader = err.response?.headers?.["x-ratelimit-reset"];
+      if (resetHeader) {
+        const resetMs = parseInt(resetHeader, 10) * 1000;
+        if (!isNaN(resetMs)) return new Date(resetMs);
+      }
+
+      // Fall back to Retry-After (seconds from now)
+      const retryAfterHeader = err.response?.headers?.["retry-after"];
+      if (retryAfterHeader) {
+        const seconds = parseInt(retryAfterHeader, 10);
+        if (!isNaN(seconds)) return new Date(Date.now() + seconds * 1000);
+      }
+    }
+
+    // No header available — default to 1 hour from now
+    return new Date(Date.now() + RATE_LIMIT_BLOCK_MS);
+  }
+
+  private isRateLimitStatus(error: unknown): boolean {
+    if (error && typeof error === "object" && "status" in error) {
+      const status = (error as { status: number }).status;
+      return status === 403 || status === 429;
+    }
+    return false;
+  }
+
+  // ── Public API ─────────────────────────────────────────────────────────────
 
   async getActiveRepositories(): Promise<Repository[]> {
     const client = await pool.connect();
@@ -61,6 +140,13 @@ export class ReleaseTrackerService {
     owner: string,
     repo: string,
   ): Promise<GitHubRelease | null> {
+    if (this.isRateLimited()) {
+      logger.warn(
+        `⏸ Skipping getLatestRelease for ${owner}/${repo} — rate limited until ${this.rateLimitedUntil!.toLocaleString()}`,
+      );
+      throw new RateLimitError(this.rateLimitedUntil!);
+    }
+
     try {
       const response = await this.octokit.rest.repos.getLatestRelease({
         owner,
@@ -69,8 +155,12 @@ export class ReleaseTrackerService {
 
       return response.data as GitHubRelease;
     } catch (error: unknown) {
+      if (this.isRateLimitStatus(error)) {
+        this.handleRateLimitError(error); // always throws
+      }
+
       if (error && typeof error === "object" && "status" in error) {
-        if (error.status === 404) {
+        if ((error as { status: number }).status === 404) {
           logger.warn(`No releases found for ${owner}/${repo}`);
           return null;
         }
@@ -86,6 +176,13 @@ export class ReleaseTrackerService {
     repo: string,
     limit = 10,
   ): Promise<GitHubRelease[]> {
+    if (this.isRateLimited()) {
+      logger.warn(
+        `⏸ Skipping getAllReleases for ${owner}/${repo} — rate limited until ${this.rateLimitedUntil!.toLocaleString()}`,
+      );
+      return [];
+    }
+
     try {
       const response = await this.octokit.rest.repos.listReleases({
         owner,
@@ -94,7 +191,11 @@ export class ReleaseTrackerService {
       });
 
       return response.data as GitHubRelease[];
-    } catch (error) {
+    } catch (error: unknown) {
+      if (this.isRateLimitStatus(error)) {
+        this.handleRateLimitError(error); // always throws
+      }
+
       logger.error(`Error fetching releases for ${owner}/${repo}:`, error);
       return [];
     }
@@ -147,6 +248,9 @@ export class ReleaseTrackerService {
         return false;
       }
     } catch (error) {
+      // Propagate RateLimitError so checkAllRepositories can abort the loop
+      if (error instanceof RateLimitError) throw error;
+
       logger.error(
         `Failed to check releases for ${repo.owner}/${repo.repository}:`,
         error,
@@ -189,6 +293,13 @@ export class ReleaseTrackerService {
     logger.info("Starting release check for all repositories...");
     logger.info("=".repeat(50));
 
+    if (this.isRateLimited()) {
+      logger.warn(
+        `⏸ Release check skipped — rate limited until ${this.rateLimitedUntil!.toLocaleString()}`,
+      );
+      return { checked: 0, newReleases: 0, details: [] };
+    }
+
     const repositories = await this.getActiveRepositories();
     logger.info(`Found ${repositories.length} active repositories to check`);
 
@@ -196,6 +307,14 @@ export class ReleaseTrackerService {
     const newReleasesDetails: Array<{ repo: string; tag: string }> = [];
 
     for (const repo of repositories) {
+      // Re-check inside the loop — we may have been rate-limited mid-run
+      if (this.isRateLimited()) {
+        logger.warn(
+          `⏸ Aborting remaining checks — rate limited until ${this.rateLimitedUntil!.toLocaleString()}`,
+        );
+        break;
+      }
+
       try {
         const hasNewRelease = await this.checkRepositoryForNewReleases(repo);
 
@@ -209,6 +328,12 @@ export class ReleaseTrackerService {
 
         await this.delay(1000);
       } catch (error) {
+        if (error instanceof RateLimitError) {
+          logger.warn(
+            `⏸ Aborting remaining checks — rate limited until ${error.retryAfter.toLocaleString()}`,
+          );
+          break; // stop the loop, do not crash
+        }
         logger.error(`Error checking ${repo.owner}/${repo.repository}:`, error);
       }
     }
@@ -265,6 +390,13 @@ export class ReleaseTrackerService {
   }
 
   async getRateLimitInfo(): Promise<void> {
+    if (this.isRateLimited()) {
+      logger.warn(
+        `⏸ Skipping rate limit info fetch — currently rate limited until ${this.rateLimitedUntil!.toLocaleString()}`,
+      );
+      return;
+    }
+
     try {
       const response = await this.octokit.rest.rateLimit.get();
       const rateLimit = response.data.rate;

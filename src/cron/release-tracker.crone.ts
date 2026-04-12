@@ -6,7 +6,7 @@ const logger = log4js.getLogger();
 logger.level = process.env.LOG_LEVEL || "info";
 
 export function startReleaseTrackerCron() {
-  cron.schedule("*/15 * * * *", async () => {
+  cron.schedule("*/5 * * * *", async () => {
     logger.info("⏰ Running scheduled release check...");
 
     try {

@@ -7,7 +7,6 @@ import { useExpressServer } from "routing-controllers";
 import { GlobalErrorHandler } from "./middleware/global-error-handler";
 import bodyParser from "body-parser";
 import swaggerUi from "swagger-ui-express";
-import * as swaggerDocument from "./swagger/open-api.json";
 import cors from "cors";
 import pool, {
   checkMigrationsTable,
@@ -16,8 +15,21 @@ import pool, {
 import { runMigrations } from "./scripts/run-migration";
 import { SubscribeController } from "./controllers/subscribe-controller";
 import { startReleaseTrackerCron } from "./cron/release-tracker.crone";
+import * as base from "./swagger/open-api.json";
 
 dotenv.config();
+
+// /**
+//  * Returns the Swagger document with `host` resolved from environment variables.
+//  * Falls back to the value baked into open-api.json when the env vars are absent.
+//  */
+export function buildSwaggerDocument(): typeof base {
+  const host = process.env.BASE_URL
+    ? process.env.BASE_URL.replace(/^https?:\/\//, "").replace(/\/$/, "")
+    : `localhost:${process.env.PORT ?? 7000}`;
+
+  return { ...base, host };
+}
 
 const logger = log4js.getLogger();
 logger.level = process.env.LOG_LEVEL || "warn";
@@ -25,7 +37,7 @@ logger.level = process.env.LOG_LEVEL || "warn";
 const app: Express = express();
 app.use(bodyParser.json());
 app.use(httpContext.middleware);
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(buildSwaggerDocument()));
 app.use(cors() as RequestHandler);
 
 async function initializeDatabase() {

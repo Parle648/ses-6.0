@@ -11,7 +11,11 @@ import {
   QueryParam,
 } from "routing-controllers";
 import "reflect-metadata";
-import { loggingAfter, loggingBefore } from "../middleware/middleware";
+import {
+  getSubscriptionsQueryValidation,
+  loggingAfter,
+  loggingBefore,
+} from "../middleware/middleware";
 import { Subscription } from "../model/subscribe";
 import { Octokit } from "@octokit/rest";
 import pool from "../config/db-connection";
@@ -134,6 +138,7 @@ export class SubscribeController {
   }
 
   @Get("/subscriptions")
+  @UseBefore(getSubscriptionsQueryValidation)
   async getAll(@QueryParam("email") email: string) {
     if (!email) {
       throw new HttpError(400, "Email parameter is required");
