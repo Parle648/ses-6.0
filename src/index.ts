@@ -1,44 +1,3 @@
-// import express, { Express, RequestHandler } from "express";
-// import * as dotenv from "dotenv";
-// import log4js from "log4js";
-// import { UserController } from "./controllers/user-controller";
-// import httpContext from "express-http-context";
-// import { useExpressServer } from "routing-controllers";
-// import { GlobalErrorHandler } from "./middleware/global-error-handler";
-// import bodyParser from "body-parser";
-// import swaggerUi from "swagger-ui-express";
-// import * as swaggerDocument from "./swagger/open-api.json";
-// import cors from "cors";
-// import pool from "./config/db-connection";
-
-// dotenv.config();
-
-// const logger = log4js.getLogger();
-// logger.level = process.env.LOG_LEVEL || "warn";
-
-// const app: Express = express();
-// app.use(bodyParser.json());
-// app.use(httpContext.middleware);
-// app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-// app.use(cors() as RequestHandler);
-
-// pool.query("SELECT NOW()", (err, res) => {
-//   if (err) {
-//     console.error("Database connection failed:", err);
-//   } else {
-//     console.log("Database connected successfully at:", res.rows[0].now);
-//   }
-// });
-
-// useExpressServer(app, {
-//   controllers: [UserController],
-//   middlewares: [GlobalErrorHandler],
-//   defaultErrorHandler: false,
-// });
-
-// const port = process.env.PORT || 6000;
-// app.listen(port, () => console.log(`Running on port ${port}`));
-// index.ts
 import express, { Express, RequestHandler } from "express";
 import * as dotenv from "dotenv";
 import log4js from "log4js";
@@ -55,6 +14,8 @@ import pool, {
   getCurrentMigrationVersion,
 } from "./config/db-connection";
 import { runMigrations } from "./scripts/run-migration";
+import { SubscribeController } from "./controllers/subscribe-controller";
+import { startReleaseTrackerCron } from "./cron/release-tracker.crone";
 
 dotenv.config();
 
@@ -95,7 +56,7 @@ async function initializeDatabase() {
 initializeDatabase()
   .then(() => {
     useExpressServer(app, {
-      controllers: [UserController],
+      controllers: [UserController, SubscribeController],
       middlewares: [GlobalErrorHandler],
       defaultErrorHandler: false,
     });
@@ -106,6 +67,8 @@ initializeDatabase()
       logger.info(
         `Swagger documentation available at http://localhost:${port}/api-docs`,
       );
+
+      startReleaseTrackerCron();
     });
   })
   .catch((error) => {

@@ -1,101 +1,180 @@
 {
-  "openapi": "3.0.1",
+  "swagger": "2.0",
   "info": {
-    "title": "test API",
-    "version": "v1"
+    "description": "GitHub Release Notification API that allows users to subscribe to email notifications about new releases of a chosen GitHub repository.",
+    "version": "1.0.0",
+    "title": "GitHub Release Notification API"
   },
-  "servers": [
-    {
-      "url": "http://localhost:3000"
-    }
-  ],
+  "host": "localhost:4513",
+  "basePath": "/",
   "tags": [
     {
-      "name": "API functions",
-      "description": "API functions of our application\n"
+      "name": "subscription",
+      "description": "Subscription management operations"
     }
   ],
+  "schemes": ["http", "https"],
   "paths": {
-    "/users/{id}": {
-      "get": {
-        "summary": "returns simple answer from get",
-        "tags": ["API functions"],
+    "/subscribe": {
+      "post": {
+        "tags": ["subscription"],
+        "summary": "Subscribe to release notifications",
+        "description": "Subscribe an email to receive notifications about new releases of a GitHub repository. The repository is validated via GitHub API.",
+        "operationId": "subscribe",
+        "consumes": ["application/json"],
+        "produces": ["application/json"],
         "parameters": [
           {
-            "name": "id",
-            "in": "path",
+            "in": "body",
+            "name": "body",
+            "description": "Subscription request",
             "required": true,
-            "description": "simple parameter",
             "schema": {
-              "type": "string",
-              "example": "1"
+              "$ref": "#/definitions/SubscribeRequest"
             }
           }
         ],
-        "description": "parameter id just for test",
         "responses": {
           "200": {
-            "description": "OK",
-            "content": {
-              "document": {
-                "schema": {
-                  "type": "string",
-                  "example": "some text"
-                }
-              }
-            }
+            "description": "Subscription successful. Confirmation email sent."
+          },
+          "400": {
+            "description": "Invalid input (e.g., invalid repo format)"
+          },
+          "404": {
+            "description": "Repository not found on GitHub"
+          },
+          "409": {
+            "description": "Email already subscribed to this repository"
           }
         }
-      },
-      "post": {
-        "summary": "returns simple answer from post",
-        "tags": ["API functions"],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Info"
-              },
-              "example": {
-                "country": "Russia",
-                "city": "Spb"
-              }
-            }
-          }
-        },
+      }
+    },
+    "/confirm/{token}": {
+      "get": {
+        "tags": ["subscription"],
+        "summary": "Confirm email subscription",
+        "description": "Confirms a subscription using the token sent in the confirmation email.",
+        "operationId": "confirmSubscription",
+        "produces": ["application/json"],
         "parameters": [
           {
-            "name": "id",
+            "name": "token",
             "in": "path",
+            "description": "Confirmation token",
             "required": true,
-            "description": "simple parameter",
-            "schema": {
-              "type": "string",
-              "example": "1"
-            }
+            "type": "string"
           }
         ],
-        "description": "parameter id just for test",
         "responses": {
-          "204": {
-            "description": "OK"
+          "200": {
+            "description": "Subscription confirmed successfully"
+          },
+          "400": {
+            "description": "Invalid token"
+          },
+          "404": {
+            "description": "Token not found"
+          }
+        }
+      }
+    },
+    "/unsubscribe/{token}": {
+      "get": {
+        "tags": ["subscription"],
+        "summary": "Unsubscribe from release notifications",
+        "description": "Unsubscribes an email from release notifications using the token sent in emails.",
+        "operationId": "unsubscribe",
+        "produces": ["application/json"],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Unsubscribe token",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unsubscribed successfully"
+          },
+          "400": {
+            "description": "Invalid token"
+          },
+          "404": {
+            "description": "Token not found"
+          }
+        }
+      }
+    },
+    "/subscriptions": {
+      "get": {
+        "tags": ["subscription"],
+        "summary": "Get subscriptions for an email",
+        "description": "Returns all active subscriptions for the given email address.",
+        "operationId": "getSubscriptions",
+        "produces": ["application/json"],
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "description": "Email address to look up subscriptions for",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation - list of subscriptions returned",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Subscription"
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid email"
           }
         }
       }
     }
   },
-  "components": {
-    "schemas": {
-      "Info": {
-        "type": "object",
-        "properties": {
-          "country": {
-            "type": "string"
-          },
-          "city": {
-            "type": "string"
-          }
+  "definitions": {
+    "SubscribeRequest": {
+      "type": "object",
+      "required": ["email", "repo"],
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Email address to subscribe"
+        },
+        "repo": {
+          "type": "string",
+          "description": "GitHub repository in owner/repo format (e.g., golang/go)"
+        }
+      }
+    },
+    "Subscription": {
+      "type": "object",
+      "required": ["email", "repo"],
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Email address"
+        },
+        "repo": {
+          "type": "string",
+          "description": "GitHub repository in owner/repo format"
+        },
+        "confirmed": {
+          "type": "boolean",
+          "description": "Whether the subscription is confirmed"
+        },
+        "last_seen_tag": {
+          "type": "string",
+          "description": "Last seen release tag for this repository"
         }
       }
     }
