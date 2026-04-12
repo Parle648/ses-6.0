@@ -5,6 +5,14 @@ import { useExpressServer } from "routing-controllers";
 import { GlobalErrorHandler } from "../../middleware/global-error-handler";
 import express, { Express } from "express";
 import request from "supertest";
+import {
+  describe,
+  expect,
+  it,
+  beforeAll,
+  afterEach,
+  jest,
+} from "@jest/globals";
 
 const server: Express = express();
 
@@ -25,7 +33,7 @@ describe("UserController", () => {
   it("postOne", () => {
     const userController = new UserController();
     const testBody = {
-      city: "SPb",
+      city: "Lviv",
     };
     const res = userController.postOne(testBody as Info);
     expect(res).toBeUndefined();

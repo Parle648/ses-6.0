@@ -68,10 +68,12 @@ export class ReleaseTrackerService {
       });
 
       return response.data as GitHubRelease;
-    } catch (error: any) {
-      if (error.status === 404) {
-        logger.warn(`No releases found for ${owner}/${repo}`);
-        return null;
+    } catch (error: unknown) {
+      if (error && typeof error === "object" && "status" in error) {
+        if (error.status === 404) {
+          logger.warn(`No releases found for ${owner}/${repo}`);
+          return null;
+        }
       }
 
       logger.error(`Error fetching releases for ${owner}/${repo}:`, error);
@@ -92,7 +94,7 @@ export class ReleaseTrackerService {
       });
 
       return response.data as GitHubRelease[];
-    } catch (error: any) {
+    } catch (error) {
       logger.error(`Error fetching releases for ${owner}/${repo}:`, error);
       return [];
     }

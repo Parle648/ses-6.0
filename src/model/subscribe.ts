@@ -13,11 +13,11 @@ export class Subscription {
   @IsString()
   @IsNotEmpty()
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsDefined()
   @IsString()
   @IsNotEmpty()
   @Matches(repoRegex)
-  repo: string;
+  repo!: string;
 }

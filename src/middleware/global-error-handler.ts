@@ -5,7 +5,7 @@ import {
 import { ValidationError } from "class-validator";
 import { Request, Response } from "express";
 
-interface AppError extends Error {
+export interface AppError extends Error {
   errors?: ValidationError[];
   httpCode?: number;
   status?: number;

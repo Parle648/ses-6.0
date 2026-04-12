@@ -199,8 +199,13 @@ export class SubscribeController {
           owner,
           repo,
         });
-      } catch (error: any) {
-        if (error.status === 404) {
+      } catch (error: unknown) {
+        if (
+          error &&
+          typeof error === "object" &&
+          "status" in error &&
+          error.status === 404
+        ) {
           throw new NotFoundError(
             `Repository ${owner}/${repo} not found on GitHub`,
           );
@@ -316,7 +321,7 @@ export class SubscribeController {
           repo,
         });
         lastSeenTag = latestRelease.data.tag_name;
-      } catch (error) {
+      } catch {
         console.log(`No releases found for ${owner}/${repo}`);
       }
 

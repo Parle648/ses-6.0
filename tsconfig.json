@@ -18,6 +18,7 @@
     "swc": true,
     "transpileOnly": true
   },
+  "include": ["src/**/*", "tests/**/*"],
   "exclude": [
     "node_modules",
     "dist",
