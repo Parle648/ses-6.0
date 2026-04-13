@@ -25,6 +25,7 @@
 - [x] **Деплой**
 - [x] **GitHub CI** (lint + tests)
 - [x] **Integration tests**
+- [x] **UI**
 
 ---
 
