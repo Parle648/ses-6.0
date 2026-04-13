@@ -48,3 +48,6 @@ npm install --force
 npm run docker-build:dev
 npm run docker-run:dev
 ```
+
+## Frontend
+[UI for the task](https://fe-n8va.onrender.com/)
